@@ -26,7 +26,6 @@
 #include "history_api.h"
 #include "network.h"
 
-// Helper to convert UTF-16 to UTF-8
 char *wide_to_utf8(const wchar_t *wstr) {
   if (!wstr)
     return NULL;
@@ -37,7 +36,7 @@ char *wide_to_utf8(const wchar_t *wstr) {
   return str;
 }
 
-// Helper to get command line args in UTF-8
+//UTF-8
 void get_utf8_args(int *argc, char ***argv) {
   int wargc;
   wchar_t **wargv = CommandLineToArgvW(GetCommandLineW(), &wargc);
@@ -170,7 +169,6 @@ int history_callback(DanmakuElem *elem, void *user_data) {
         printf("\n");
       }
 
-      // 关键修复：规范化 Hash 到 8 位（左补零）
       // Protobuf 存储时会丢失前导零，如 "87c8c3d" 应为 "087c8c3d"
       char normalized_hash[9] = {0};
       if (len < 8) {
@@ -209,7 +207,7 @@ int history_callback(DanmakuElem *elem, void *user_data) {
 }
 
 /**
- * 解析XML (实时模式，保留旧逻辑)
+ * 解析XML 
  */
 void parse_xml_legacy(const char *xml, const char *keyword, int limit,
                       int threads) {
@@ -231,8 +229,7 @@ void parse_xml_legacy(const char *xml, const char *keyword, int limit,
     if (content) {
       memcpy(content, p_end + 1, len);
       content[len] = 0;
-
-      // Extract Hash (Simple version)
+      
       char hash[16] = {0};
       char *p = cursor + 6;
       int commas = 0;
@@ -324,17 +321,15 @@ int main(int argc, char *argv[]) {
     network_init();
 
     if (sessdata) {
-      // === History Mode ===
+
       printf("[模式] 历史回溯 (鉴权模式)\n");
       printf("[原理] 正向遍历日期索引，突破7天限制\n");
       printf("[警告] 请确保 SESSDATA 属于测试账号，高频访问有封号风险！\n\n");
 
-      // Start from current month (Hardcoded for now as per plan, in real app
-      // use time() to get current)
-      char current_month[16] = "2026-01";
-      char end_month[16] = "2009-01"; // Bilibili founded around 2009
 
-      // Attempt to fetch pubdate if BVID is provided
+      char current_month[16] = "2026-01";
+      char end_month[16] = "2009-01"; 
+
       if (bvid_str) {
         long long pub_ts = fetch_video_pubdate(bvid_str);
         if (pub_ts > 0) {
@@ -348,13 +343,7 @@ int main(int argc, char *argv[]) {
             snprintf(end_month, sizeof(end_month), "%04d-%02d",
                      tm_info->tm_year + 1900, tm_info->tm_mon + 1);
             printf("[系统] 获取到视频发布日期: %s (BVID: %s)\n", end_month,
-                   bvid_str);
-            // Optimization: Decrement end_month by 1 month to ensure we cover
-            // the launch month fully (Loop stops when current < end, so setting
-            // end to launch month might skip it if we land exactly on it? Wait,
-            // logic is strcmp(current, end) < 0 break. If current == "2024-01"
-            // and end=="2024-01", it continues. If current goes to "2023-12",
-            // it breaks. Correct.)
+                   bvid_str);            
           }
         } else {
           printf("[警告] 无法获取视频发布日期 (BVID: %s)，使用默认回溯下限 "
@@ -379,8 +368,7 @@ int main(int argc, char *argv[]) {
           if (idx)
             free_history_index(idx);
 
-          // Heuristic: stop if we see 12 consecutive empty months?
-          // For now, just continue until 2009 or user stops
+          
           empty_months_streak++;
           if (empty_months_streak > 24) { // 2 years gap -> stop
             printf("[系统] 连续24个月无数据，停止回溯。\n");
