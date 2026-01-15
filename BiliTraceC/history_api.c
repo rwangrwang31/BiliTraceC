@@ -229,3 +229,75 @@ long long fetch_video_pubdate(const char *bvid) {
   free(response.memory);
   return ts;
 }
+
+int fetch_video_info(const char *bvid, VideoInfo *info) {
+  if (!bvid || !info)
+    return 0;
+
+  char url[256];
+  snprintf(url, sizeof(url),
+           "https://api.bilibili.com/x/web-interface/view?bvid=%s", bvid);
+
+  struct MemoryStruct response = perform_request(url, NULL);
+
+  if (!response.memory)
+    return 0;
+
+  cJSON *json = cJSON_Parse(response.memory);
+  if (!json) {
+    printf("[Error] Failed to parse View API JSON for %s\n", bvid);
+    free(response.memory);
+    return 0;
+  }
+
+  cJSON *code_obj = cJSON_GetObjectItem(json, "code");
+  if (!cJSON_IsNumber(code_obj) || code_obj->valueint != 0) {
+    printf("[Error] View API returned error for %s\n", bvid);
+    cJSON_Delete(json);
+    free(response.memory);
+    return 0;
+  }
+
+  cJSON *data = cJSON_GetObjectItem(json, "data");
+  if (!data) {
+    cJSON_Delete(json);
+    free(response.memory);
+    return 0;
+  }
+
+  // 提取 CID (第一个分P)
+  cJSON *cid_obj = cJSON_GetObjectItem(data, "cid");
+  if (cJSON_IsNumber(cid_obj)) {
+    info->cid = (long long)cid_obj->valuedouble;
+  } else {
+    info->cid = 0;
+  }
+
+  // 提取发布时间
+  cJSON *pubdate_obj = cJSON_GetObjectItem(data, "pubdate");
+  if (cJSON_IsNumber(pubdate_obj)) {
+    info->pubdate = (long long)pubdate_obj->valuedouble;
+  } else {
+    info->pubdate = 0;
+  }
+
+  // 提取标题（可选）
+  cJSON *title_obj = cJSON_GetObjectItem(data, "title");
+  if (cJSON_IsString(title_obj) && title_obj->valuestring) {
+    strncpy(info->title, title_obj->valuestring, sizeof(info->title) - 1);
+    info->title[sizeof(info->title) - 1] = '\0';
+  } else {
+    info->title[0] = '\0';
+  }
+
+  cJSON_Delete(json);
+  free(response.memory);
+
+  printf("[系统] 获取视频信息成功: CID=%I64d, 发布于 %I64d\n", info->cid,
+         info->pubdate);
+  if (info->title[0]) {
+    printf("[系统] 标题: %s\n", info->title);
+  }
+
+  return (info->cid > 0) ? 1 : 0;
+}

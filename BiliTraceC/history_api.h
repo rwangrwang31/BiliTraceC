@@ -36,9 +36,19 @@ void free_history_index(HistoryIndex *idx);
 int fetch_history_segment(long long cid, const char *date, const char *sessdata,
                           DanmakuCallback cb, void *user_data);
 
-// 获取视频发布时间戳 (Pubdate)
+// 视频信息结构（从BVID获取）
+typedef struct {
+  long long cid;     // 视频CID（第一个分P）
+  long long pubdate; // 发布时间戳
+  char title[256];   // 视频标题（可选）
+} VideoInfo;
+
+// 获取视频信息（CID + Pubdate）
 // 需要提供 BVID (如 BV1xx...)
-// Returns unix timestamp or 0 on failure
+// 成功返回 1，失败返回 0
+int fetch_video_info(const char *bvid, VideoInfo *info);
+
+// 旧版兼容：仅获取发布时间戳
 long long fetch_video_pubdate(const char *bvid);
 
 #endif

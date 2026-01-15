@@ -26,6 +26,7 @@
 #include "history_api.h"
 #include "network.h"
 
+// Helper to convert UTF-16 to UTF-8
 char *wide_to_utf8(const wchar_t *wstr) {
   if (!wstr)
     return NULL;
@@ -36,7 +37,7 @@ char *wide_to_utf8(const wchar_t *wstr) {
   return str;
 }
 
-//UTF-8
+// Helper to get command line args in UTF-8
 void get_utf8_args(int *argc, char ***argv) {
   int wargc;
   wchar_t **wargv = CommandLineToArgvW(GetCommandLineW(), &wargc);
@@ -169,6 +170,7 @@ int history_callback(DanmakuElem *elem, void *user_data) {
         printf("\n");
       }
 
+      // 关键修复：规范化 Hash 到 8 位（左补零）
       // Protobuf 存储时会丢失前导零，如 "87c8c3d" 应为 "087c8c3d"
       char normalized_hash[9] = {0};
       if (len < 8) {
@@ -207,7 +209,7 @@ int history_callback(DanmakuElem *elem, void *user_data) {
 }
 
 /**
- * 解析XML 
+ * 解析XML (实时模式，保留旧逻辑)
  */
 void parse_xml_legacy(const char *xml, const char *keyword, int limit,
                       int threads) {
@@ -229,7 +231,8 @@ void parse_xml_legacy(const char *xml, const char *keyword, int limit,
     if (content) {
       memcpy(content, p_end + 1, len);
       content[len] = 0;
-      
+
+      // Extract Hash (Simple version)
       char hash[16] = {0};
       char *p = cursor + 6;
       int commas = 0;
@@ -317,38 +320,48 @@ int main(int argc, char *argv[]) {
     return 0;
   }
 
-  if (cid > 0) {
+  // 如果提供了 BVID，自动获取 CID 和发布日期
+  long long pub_ts = 0;
+  if (bvid_str) {
     network_init();
+    VideoInfo vinfo = {0};
+    if (fetch_video_info(bvid_str, &vinfo)) {
+      cid = vinfo.cid;
+      pub_ts = vinfo.pubdate;
+    } else {
+      printf("[错误] 无法从 BVID 获取视频信息，请检查 BV 号是否正确。\n");
+      network_cleanup();
+      return 1;
+    }
+  }
+
+  if (cid > 0) {
+    if (!bvid_str) {
+      network_init(); // 如果没有 BVID，这里才初始化网络
+    }
 
     if (sessdata) {
-
+      // === History Mode ===
       printf("[模式] 历史回溯 (鉴权模式)\n");
       printf("[原理] 正向遍历日期索引，突破7天限制\n");
       printf("[警告] 请确保 SESSDATA 属于测试账号，高频访问有封号风险！\n\n");
 
-
+      // Start from current month
       char current_month[16] = "2026-01";
-      char end_month[16] = "2009-01"; 
+      char end_month[16] = "2009-01"; // Bilibili founded around 2009
 
-      if (bvid_str) {
-        long long pub_ts = fetch_video_pubdate(bvid_str);
-        if (pub_ts > 0) {
+      // 使用已获取的 pub_ts 来设置 end_month
+      if (pub_ts > 0) {
 #ifdef _WIN32
-          struct tm *tm_info = localtime((time_t *)&pub_ts);
+        struct tm *tm_info = localtime((time_t *)&pub_ts);
 #else
-          time_t pts = (time_t)pub_ts;
-          struct tm *tm_info = localtime(&pts);
+        time_t pts = (time_t)pub_ts;
+        struct tm *tm_info = localtime(&pts);
 #endif
-          if (tm_info) {
-            snprintf(end_month, sizeof(end_month), "%04d-%02d",
-                     tm_info->tm_year + 1900, tm_info->tm_mon + 1);
-            printf("[系统] 获取到视频发布日期: %s (BVID: %s)\n", end_month,
-                   bvid_str);            
-          }
-        } else {
-          printf("[警告] 无法获取视频发布日期 (BVID: %s)，使用默认回溯下限 "
-                 "2009-01\n",
-                 bvid_str);
+        if (tm_info) {
+          snprintf(end_month, sizeof(end_month), "%04d-%02d",
+                   tm_info->tm_year + 1900, tm_info->tm_mon + 1);
+          printf("[系统] 回溯终点: %s (视频发布日期)\n", end_month);
         }
       }
 
@@ -368,7 +381,8 @@ int main(int argc, char *argv[]) {
           if (idx)
             free_history_index(idx);
 
-          
+          // Heuristic: stop if we see 12 consecutive empty months?
+          // For now, just continue until 2009 or user stops
           empty_months_streak++;
           if (empty_months_streak > 24) { // 2 years gap -> stop
             printf("[系统] 连续24个月无数据，停止回溯。\n");

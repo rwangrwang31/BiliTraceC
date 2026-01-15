@@ -1,0 +1,38 @@
+# ==========================================
+# BiliTraceC - Git Ignore
+# ==========================================
+
+# 编译产物 / Build outputs
+*.exe
+*.o
+*.obj
+*.out
+build/
+
+# 依赖库 / Dependencies
+deps/
+*.dll
+libcurl*.dll
+
+# SSL证书 / SSL Certificates
+*.crt
+*.pem
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 系统文件 / System files
+.DS_Store
+Thumbs.db
+
+# 临时文件 / Temp files
+*.log
+*.tmp
+
+# 旧版/测试文件 / Legacy/Test files
+bilitrace_local.c
+*_full.exe
