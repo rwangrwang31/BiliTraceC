@@ -5,7 +5,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-
 // 简单的内存缓冲区
 struct MemoryStruct {
   char *memory;
@@ -87,13 +86,14 @@ void history_init(void) {
   // call
 }
 
-HistoryIndex *fetch_history_index(long long cid, const char *sessdata) {
+HistoryIndex *fetch_history_index_by_month(long long cid, const char *month,
+                                           const char *sessdata) {
   char url[256];
   // Use %I64d for MinGW compatibility
   snprintf(url, sizeof(url),
            "https://api.bilibili.com/x/v2/dm/history/"
-           "index?type=1&oid=%I64d&month=2026-01",
-           cid);
+           "index?type=1&oid=%I64d&month=%s",
+           cid, month);
 
   struct MemoryStruct response = perform_request(url, sessdata);
   if (!response.memory)
@@ -102,7 +102,7 @@ HistoryIndex *fetch_history_index(long long cid, const char *sessdata) {
   // Parse JSON
   cJSON *json = cJSON_Parse(response.memory);
   if (!json) {
-    printf("[Error] Failed to parse JSON index\n");
+    printf("[Error] Failed to parse JSON index for %s\n", month);
     free(response.memory);
     return NULL;
   }
@@ -111,29 +111,36 @@ HistoryIndex *fetch_history_index(long long cid, const char *sessdata) {
   cJSON *code = cJSON_GetObjectItem(json, "code");
   cJSON *data = cJSON_GetObjectItem(json, "data");
 
-  if (!cJSON_IsNumber(code) || code->valueint != 0 || !cJSON_IsArray(data)) {
-    printf("[Error] API returned error or no data: %s\n", response.memory);
+  // Allow "data": null which means empty month (not error)
+  if (!cJSON_IsNumber(code) || code->valueint != 0) {
+    printf("[Error] API returned error for %s: %s\n", month, response.memory);
     cJSON_Delete(json);
     free(response.memory);
     return NULL;
   }
 
-  // Extract dates
-  int count = cJSON_GetArraySize(data);
   HistoryIndex *idx = (HistoryIndex *)malloc(sizeof(HistoryIndex));
-  idx->count = count;
-  idx->dates = (char **)malloc(sizeof(char *) * count);
+  if (!cJSON_IsArray(data)) {
+    // Empty data for this month
+    idx->count = 0;
+    idx->dates = NULL;
+  } else {
+    // Extract dates
+    int count = cJSON_GetArraySize(data);
+    idx->count = count;
+    idx->dates = (char **)malloc(sizeof(char *) * count);
 
-  for (int i = 0; i < count; i++) {
-    cJSON *item = cJSON_GetArrayItem(data, i);
-    if (cJSON_IsString(item)) {
-      idx->dates[i] = strdup(item->valuestring);
-    } else {
-      idx->dates[i] = NULL;
+    for (int i = 0; i < count; i++) {
+      cJSON *item = cJSON_GetArrayItem(data, i);
+      if (cJSON_IsString(item)) {
+        idx->dates[i] = strdup(item->valuestring);
+      } else {
+        idx->dates[i] = NULL;
+      }
     }
   }
 
-  printf("[System] Found %d dates in history index (2026-01)\n", count);
+  printf("[System] Found %d dates in history index (%s)\n", idx->count, month);
 
   cJSON_Delete(json);
   free(response.memory);
@@ -183,4 +190,42 @@ int fetch_history_segment(long long cid, const char *date, const char *sessdata,
   }
 
   return 0; // Success
+}
+
+long long fetch_video_pubdate(const char *bvid) {
+  char url[256];
+  snprintf(url, sizeof(url),
+           "https://api.bilibili.com/x/web-interface/view?bvid=%s", bvid);
+
+  // Note: View API usually doesn't need SESSDATA for public videos,
+  // but if we have it, passing NULL is fine for this helper usually,
+  // or we could pass sessdata if needed. For now, public view.
+  struct MemoryStruct response = perform_request(url, NULL);
+
+  if (!response.memory)
+    return 0;
+
+  cJSON *json = cJSON_Parse(response.memory);
+  if (!json) {
+    printf("[Error] Failed to parse View API JSON\n");
+    free(response.memory);
+    return 0;
+  }
+
+  cJSON *data = cJSON_GetObjectItem(json, "data");
+  if (!data) {
+    cJSON_Delete(json);
+    free(response.memory);
+    return 0;
+  }
+
+  cJSON *pubdate = cJSON_GetObjectItem(data, "pubdate");
+  long long ts = 0;
+  if (cJSON_IsNumber(pubdate)) {
+    ts = (long long)pubdate->valuedouble;
+  }
+
+  cJSON_Delete(json);
+  free(response.memory);
+  return ts;
 }
