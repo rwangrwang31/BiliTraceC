@@ -92,8 +92,6 @@ BiliTraceC/
 ├── build.bat/sh        # Windows/Linux编译脚本
 ├── CMakeLists.txt      # CMake配置
 ├── deps/               # 依赖库（需自行下载curl）
-├── docs/               # 技术文档
-│   └── REPORT_7DAYS_LIMIT.md  # 7天限制深度研究报告
 ├── .gitignore          # Git忽略规则
 └── README.md           # 本文件
 ```
