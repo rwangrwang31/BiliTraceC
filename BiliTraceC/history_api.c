@@ -160,6 +160,36 @@ void free_history_index(HistoryIndex *idx) {
 
 int fetch_history_segment(long long cid, const char *date, const char *sessdata,
                           DanmakuCallback cb, void *user_data) {
+  char cache_dir[256];
+  char cache_path[512];
+
+  // 构建缓存路径
+  snprintf(cache_dir, sizeof(cache_dir), "cache/%I64d", cid);
+  snprintf(cache_path, sizeof(cache_path), "cache/%I64d/%s.pb", cid, date);
+
+  // 尝试从缓存读取
+  FILE *cache_file = fopen(cache_path, "rb");
+  if (cache_file) {
+    printf("[Cache] 从缓存加载 %s...\n", date);
+    fseek(cache_file, 0, SEEK_END);
+    size_t file_size = ftell(cache_file);
+    fseek(cache_file, 0, SEEK_SET);
+
+    if (file_size > 0) {
+      uint8_t *cached_data = (uint8_t *)malloc(file_size);
+      if (cached_data) {
+        fread(cached_data, 1, file_size, cache_file);
+        fclose(cache_file);
+
+        ProtoResult res = parse_dm_seg(cached_data, file_size, cb, user_data);
+        free(cached_data);
+        return (res == PROTO_OK) ? 0 : -1;
+      }
+    }
+    fclose(cache_file);
+  }
+
+  // 缓存未命中，从网络下载
   char url[256];
   snprintf(url, sizeof(url),
            "https://api.bilibili.com/x/v2/dm/web/history/"
@@ -176,6 +206,22 @@ int fetch_history_segment(long long cid, const char *date, const char *sessdata,
     printf("[Warn] Empty response for %s\n", date);
     free(response.memory);
     return 0;
+  }
+
+// 保存到缓存
+#ifdef _WIN32
+  CreateDirectoryA("cache", NULL);
+  CreateDirectoryA(cache_dir, NULL);
+#else
+  mkdir("cache", 0755);
+  mkdir(cache_dir, 0755);
+#endif
+
+  FILE *save_file = fopen(cache_path, "wb");
+  if (save_file) {
+    fwrite(response.memory, 1, response.size, save_file);
+    fclose(save_file);
+    printf("[Cache] 已保存到 %s\n", cache_path);
   }
 
   // Parse Protobuf
@@ -300,4 +346,44 @@ int fetch_video_info(const char *bvid, VideoInfo *info) {
   }
 
   return (info->cid > 0) ? 1 : 0;
+}
+
+// 验证UID是否存在 (使用 card API，无需 Wbi 签名)
+int verify_uid_exists(uint64_t uid) {
+  char url[256];
+  // 使用 card API，比 wbi/acc/info 更简单，不需要签名
+  snprintf(url, sizeof(url),
+           "https://api.bilibili.com/x/web-interface/card?mid=%I64u", uid);
+
+  struct MemoryStruct response = perform_request(url, NULL);
+  if (!response.memory) {
+    printf("[Debug] verify_uid_exists(%I64u): 请求失败\n", uid);
+    return -1;
+  }
+
+  cJSON *json = cJSON_Parse(response.memory);
+  if (!json) {
+    printf("[Debug] verify_uid_exists(%I64u): JSON解析失败\n", uid);
+    free(response.memory);
+    return -1;
+  }
+
+  cJSON *code_obj = cJSON_GetObjectItem(json, "code");
+  int result = -1;
+
+  if (cJSON_IsNumber(code_obj)) {
+    int code = code_obj->valueint;
+    printf("[Debug] verify_uid_exists(%I64u): code=%d\n", uid, code);
+    if (code == 0) {
+      result = 1; // 存在
+    } else if (code == -404 || code == -400) {
+      result = 0; // 不存在
+    } else {
+      result = -1; // 其他错误 (如 -352 风控)
+    }
+  }
+
+  cJSON_Delete(json);
+  free(response.memory);
+  return result;
 }

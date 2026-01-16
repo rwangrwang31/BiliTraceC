@@ -167,3 +167,82 @@ uint64_t crack_hash(const char *hex_hash, int thread_count) {
 
   return result;
 }
+
+// ============== 全量碰撞扫描函数 ==============
+int crack_hash_all(const char *hex_hash, int thread_count, CrackResult *out) {
+  if (!out)
+    return 0;
+
+  // 初始化输出
+  out->count = 0;
+  for (int i = 0; i < MAX_COLLISIONS; i++) {
+    out->uids[i] = 0;
+  }
+
+  // 参数校验与默认值
+  if (thread_count <= 0 || thread_count > MAX_THREADS) {
+    thread_count = DEFAULT_THREADS;
+  }
+
+  // 将16进制字符串转换为整数
+  uint32_t target = (uint32_t)strtoul(hex_hash, NULL, 16);
+
+  printf("[Core] 全量碰撞扫描 Hash: %08x (范围: 0-%I64u)\n", target, MAX_UID);
+
+  // 重置全局停止信号
+  atomic_store(&g_stop_signal, 0);
+
+  // 分配线程上下文数组
+  ThreadContext contexts[MAX_THREADS];
+  thread_t threads[MAX_THREADS];
+
+  // 计算每个线程的搜索范围
+  uint64_t chunk_size = MAX_UID / thread_count;
+  uint64_t remainder = MAX_UID % thread_count;
+
+  for (int i = 0; i < thread_count; i++) {
+    contexts[i].start_uid = i * chunk_size;
+    contexts[i].end_uid = (i + 1) * chunk_size;
+    if (i == thread_count - 1) {
+      contexts[i].end_uid += remainder;
+    }
+    contexts[i].target_hash = target;
+    contexts[i].result_uid = 0;
+    contexts[i].found = 0;
+    contexts[i].thread_id = i;
+
+    if (THREAD_CREATE(&threads[i], worker_thread, &contexts[i]) != 0) {
+      fprintf(stderr, "[Error] 无法创建线程 %d\n", i);
+      for (int j = 0; j < i; j++) {
+        THREAD_JOIN(threads[j]);
+      }
+      return 0;
+    }
+  }
+
+  // 等待所有线程完成
+  for (int i = 0; i < thread_count; i++) {
+    THREAD_JOIN(threads[i]);
+  }
+
+  // 收集所有碰撞候选（每个线程最多贡献1个，因为当前实现找到第一个就退出）
+  for (int i = 0; i < thread_count; i++) {
+    if (contexts[i].found && out->count < MAX_COLLISIONS) {
+      out->uids[out->count++] = contexts[i].result_uid;
+    }
+  }
+
+  // 按UID升序排序
+  for (int i = 0; i < out->count - 1; i++) {
+    for (int j = i + 1; j < out->count; j++) {
+      if (out->uids[j] < out->uids[i]) {
+        uint64_t tmp = out->uids[i];
+        out->uids[i] = out->uids[j];
+        out->uids[j] = tmp;
+      }
+    }
+  }
+
+  printf("[Core] 找到 %d 个碰撞候选\n", out->count);
+  return out->count;
+}

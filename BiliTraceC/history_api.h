@@ -51,4 +51,8 @@ int fetch_video_info(const char *bvid, VideoInfo *info);
 // 旧版兼容：仅获取发布时间戳
 long long fetch_video_pubdate(const char *bvid);
 
+// 验证UID是否存在
+// 返回: 1=存在, 0=不存在, -1=请求失败
+int verify_uid_exists(uint64_t uid);
+
 #endif

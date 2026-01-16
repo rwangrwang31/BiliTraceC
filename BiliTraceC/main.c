@@ -184,12 +184,29 @@ int history_callback(DanmakuElem *elem, void *user_data) {
         memcpy(normalized_hash, elem->midHash, 8);
       }
 
-      // 使用规范化后的 Hash 爆破
-      uint64_t uid =
-          crack_hash(normalized_hash, elem->midHash ? ctx->threads : 0);
-      if (uid) {
-        printf("│ UID : %I64u\n", uid);
-        printf("│ 主页: https://space.bilibili.com/%I64u\n", uid);
+      // 使用规范化后的 Hash 进行全量碰撞扫描
+      CrackResult candidates;
+      int count = crack_hash_all(normalized_hash, ctx->threads, &candidates);
+
+      if (count > 0) {
+        printf("│ 碰撞候选 (%d 个):\n", count);
+        for (int i = 0; i < count; i++) {
+          uint64_t uid = candidates.uids[i];
+          int exists = verify_uid_exists(uid);
+          const char *status = (exists == 1)   ? "✅存在"
+                               : (exists == 0) ? "❌不存在"
+                                               : "⚠️未知";
+          printf("│   %d. UID %I64u (%s)\n", i + 1, uid, status);
+          printf("│      主页: https://space.bilibili.com/%I64u\n", uid);
+          // 请求间隔，避免风控
+          if (i < count - 1) {
+#ifdef _WIN32
+            Sleep(500);
+#else
+            usleep(500000);
+#endif
+          }
+        }
       } else {
         printf("│ UID : 未找到\n");
       }
@@ -382,11 +399,10 @@ int main(int argc, char *argv[]) {
           if (idx)
             free_history_index(idx);
 
-          // Heuristic: stop if we see 12 consecutive empty months?
-          // For now, just continue until 2009 or user stops
+          // Heuristic: stop if we see 6 consecutive empty months (faster abort)
           empty_months_streak++;
-          if (empty_months_streak > 24) { // 2 years gap -> stop
-            printf("[系统] 连续24个月无数据，停止回溯。\n");
+          if (empty_months_streak > 6) { // 6个月空档 -> 停止
+            printf("[系统] 连续6个月无数据，停止回溯。\n");
             break;
           }
         } else {
