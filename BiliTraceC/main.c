@@ -170,6 +170,7 @@ int history_callback(DanmakuElem *elem, void *user_data) {
         printf("\n");
       }
 
+      // 关键修复：规范化 Hash 到 8 位（左补零）
       // Protobuf 存储时会丢失前导零，如 "87c8c3d" 应为 "087c8c3d"
       char normalized_hash[9] = {0};
       if (len < 8) {
@@ -365,6 +366,7 @@ int main(int argc, char *argv[]) {
       }
 
       int empty_months_streak = 0;
+      int history_found_any = 0; // 跟踪历史模式是否找到结果
 
       while (1) {
         if (strcmp(current_month, end_month) < 0) {
@@ -402,9 +404,13 @@ int main(int argc, char *argv[]) {
                                     history_callback, &ctx);
               // 如果已找到且是 first_only 模式，立即退出
               if (ctx.first_only && ctx.found) {
+                history_found_any = 1;
                 free_history_index(idx);
                 goto crawl_done; // 跳出多层循环
               }
+              // 记录是否找到任何结果
+              if (ctx.found)
+                history_found_any = 1;
               // Dynamic sleep: 1.5s is safer
               SLEEP_MS(1500);
             }
@@ -424,7 +430,16 @@ int main(int argc, char *argv[]) {
       }
 
     crawl_done: // Label for early exit via goto
-      (void)0;  // Empty statement to make the label valid
+      // 如果历史模式没找到，且有关键词，自动尝试实时模式
+      if (!history_found_any && search_keyword) {
+        printf("\n[系统] 历史模式未找到匹配，自动切换到实时模式...\n\n");
+        printf("[模式] 实时抓取 (匿名)\n");
+        char *xml = fetch_danmaku(cid);
+        if (xml) {
+          parse_xml_legacy(xml, search_keyword, limit, threads);
+          free(xml);
+        }
+      }
 
     } else {
       // === Real-time Mode ===

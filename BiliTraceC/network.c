@@ -103,8 +103,9 @@ char *fetch_danmaku(long long cid) {
     if (ca_bundle) {
       curl_easy_setopt(curl_handle, CURLOPT_CAINFO, ca_bundle);
     } else {
-      // 尝试使用同目录下的证书文件
-      curl_easy_setopt(curl_handle, CURLOPT_CAINFO, "curl-ca-bundle.crt");
+      // 使用 deps 目录下的证书文件
+      curl_easy_setopt(curl_handle, CURLOPT_CAINFO,
+                       "deps/curl-8.11.1_1-win64-mingw/bin/curl-ca-bundle.crt");
     }
 
 // 如果证书验证失败，可以暂时禁用（仅用于测试）
