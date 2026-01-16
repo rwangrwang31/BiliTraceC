@@ -170,7 +170,6 @@ int history_callback(DanmakuElem *elem, void *user_data) {
         printf("\n");
       }
 
-      // 关键修复：规范化 Hash 到 8 位（左补零）
       // Protobuf 存储时会丢失前导零，如 "87c8c3d" 应为 "087c8c3d"
       char normalized_hash[9] = {0};
       if (len < 8) {
