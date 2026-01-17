@@ -26,8 +26,8 @@
 
 // ============== 配置常量 ==============
 #define MAX_THREADS 64
-#define DEFAULT_THREADS 24    // Intel Ultra 9: 8P + 16E = 24
-#define MAX_UID 5000000000ULL // 50亿
+#define DEFAULT_THREADS 24       // Intel Ultra 9: 8P + 16E = 24
+#define MAX_UID 8000000000000ULL // 8万亿 (扩展支持新UID)
 
 // ============== 线程上下文结构 ==============
 typedef struct {
