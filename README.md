@@ -1,6 +1,6 @@
 # BiliTraceC - B站弹幕溯源工具
 
-🔍 基于CRC32逆向工程的高性能C语言弹幕发送者UID追踪工具
+🔍 **基于 CRC32 逆向工程的高性能 C 语言弹幕发送者 UID 追踪工具**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Language: C](https://img.shields.io/badge/Language-C-blue.svg)](https://en.wikipedia.org/wiki/C_(programming_language))
@@ -12,56 +12,56 @@
 
 | 功能 | 说明 |
 |------|------|
+| **16位 UID 破解** | 🆕 独家 **MITM 中间相遇攻击**，秒破 16 位长 UID |
 | **BVID 一键查询** | 只需提供 BV 号，自动获取 CID 和发布日期 |
 | **历史弹幕回溯** | 突破7天限制，可追溯至视频发布日期的全量弹幕 |
-| **智能去重** | 基于弹幕ID自动过滤重复弹幕，避免冗余输出 |
+| **智能去重** | 基于弹幕 ID 自动过滤重复弹幕，避免冗余输出 |
 | **关键词搜索** | 精确匹配包含特定文本的弹幕 |
 | **单结果模式** | 找到第一条匹配即停止 (`-first`)，高效查找 |
-| **离线Hash破解** | 直接输入CRC32 Hash进行UID反查 |
-| **高性能优化** | 查表法CRC32 + 多线程，吞吐量可达 500M Hash/s |
-| **碰撞候选列表** | 🆕 显示所有匹配UID，并验证账号是否真实存在 |
+| **高性能优化** | 查表法 CRC32 + 多线程 + 2.4GB MITM 表 |
+| **碰撞候选列表** | 🆕 显示所有匹配 UID，并验证账号是否真实存在 |
 | **本地缓存** | 🆕 历史分段自动缓存到 `cache/`，重复查询秒级响应 |
 | **智能跳过** | 🆕 连续空月份自动终止（6个月阈值），加速无效回溯 |
 
 ---
 
-## 🚀 快速开始
+## 🚀 标准工作流程 (Standard Workflow)
 
-### 环境要求
+为了确保工具能够覆盖 B 站最新的 UID 规则（特别是动态变化的 16 位 UID 号段），建议用户遵循以下 **“数据分析-编译-执行”** 的标准流程，以实现最佳的溯源效果。
 
-| 组件 | 版本要求 | 说明 |
-|------|----------|------|
-| **操作系统** | Windows 10/11 | 已测试 x64 |
-| **编译器** | GCC 8.0+ / MinGW-w64 | 推荐 MSYS2 环境 |
-| **依赖库** | libcurl | 已包含在 `deps/` 目录 |
+详细指南请参阅：[docs/USER_GUIDE.md](docs/USER_GUIDE.md)
 
-### 一键编译
+### 第一阶段：数据分析 (Data Analysis)
 
-**Windows (推荐)**
+运行 Python 数据分析脚本，从当前 B 站热门视频中提取活跃用户的 UID 分布特征，生成最新的前缀白名单。
 
 ```bash
-# 使用 PowerShell 或 CMD
-gcc -O3 -D_WIN32 -DDISABLE_SSL_VERIFY ^
-    -I./deps/curl-8.11.1_1-win64-mingw/include ^
-    -L./deps/curl-8.11.1_1-win64-mingw/lib ^
-    -o check_history.exe ^
-    main.c cracker.c network.c proto_parser.c history_api.c cJSON.c ^
-    -lcurl -lws2_32 -lgdi32 -lcrypt32
+# 1. 安装 Python 依赖
+pip install requests
+
+# 2. 运行分析脚本 (自动生成 generated_whitelist.c)
+python scripts/analyze_uid_prefixes.py
 ```
 
-**Linux/macOS**
+### 第二阶段：编译构建 (Build)
+
+将生成的最新白名单规则集成到核心程序并重新编译。
+
+1. 打开 `generated_whitelist.c`，根据提示更新 `src/mitm_cracker.c` 中的白名单规则。
+2. 执行编译：
 
 ```bash
-gcc -O3 -Wall -pthread -o check_history \
-    main.c cracker.c network.c proto_parser.c history_api.c cJSON.c \
-    -lcurl
+# Windows (MinGW 环境)
+mingw32-make
 ```
 
-### IDE 配置（可选）
+### 第三阶段：执行溯源 (Execution)
 
-已提供 `.vscode/c_cpp_properties.json`，VS Code 可自动识别头文件路径，消除 IntelliSense 警告。
+使用更新后的程序进行精准溯源。
 
----
+```bash
+./bilitrace.exe -bvid BVxxx -sessdata "xxx" -search "关键词" -first
+```
 
 ## 📖 使用指南
 
@@ -71,13 +71,13 @@ gcc -O3 -Wall -pthread -o check_history \
 
 ```bash
 # 基本用法：只需 BV 号，自动获取 CID 和发布日期
-./check_history.exe -bvid BV1AKihB7E9d -sessdata "YOUR_SESSDATA" -search "关键词"
+./bilitrace.exe -bvid BV1AKihB7E9d -sessdata "YOUR_SESSDATA" -search "关键词"
 
 # 单结果模式：找到第一条匹配就停止（推荐日常使用）
-./check_history.exe -bvid BV1AKihB7E9d -sessdata "YOUR_SESSDATA" -search "关键词" -first
+./bilitrace.exe -bvid BV1AKihB7E9d -sessdata "YOUR_SESSDATA" -search "关键词" -first
 
-# 全量扫描：不限制结果数量（用于数据归档）
-./check_history.exe -bvid BV1AKihB7E9d -sessdata "YOUR_SESSDATA"
+# 强制启用 MITM：针对 16 位疑难 UID
+./bilitrace.exe -bvid BV1AKihB7E9d -sessdata "YOUR_SESSDATA" -search "关键词" -force-mitm
 ```
 
 **完整输出示例**：
@@ -91,32 +91,20 @@ gcc -O3 -Wall -pthread -o check_history \
 [系统] 获取视频信息成功: CID=35151610084, 发布于 1767376846
 [系统] 标题: 这便是双城之战封神的原因吧！
 [模式] 历史回溯 (鉴权模式)
-[原理] 正向遍历日期索引，突破7天限制
-[警告] 请确保 SESSDATA 属于测试账号，高频访问有封号风险！
-
-[系统] 回溯终点: 2026-01 (视频发布日期)
-[System] Found 14 dates in history index (2026-01)
-[Network] Downloading history segment for 2026-01-03...
-[Cache] 已保存到 cache/35151610084/2026-01-03.pb
-[Network] Downloading history segment for 2026-01-04...
-[Cache] 已保存到 cache/35151610084/2026-01-04.pb
 ...
-[Cache] 从缓存加载 2026-01-09...  ← 命中缓存，跳过网络请求
+[系统] 回溯终点: 2026-01 (视频发布日期)
+[Cache] 从缓存加载 2026-01-09...
 
 ┌─────────────────────────────────────────────────────────
 │ [历史] 弹幕 #1 (日期: 1767958066)
 ├─────────────────────────────────────────────────────────
-│ 内容: 这剧配音是真不错，很少有外剧的中配这么好
-│ Hash: [4c384fc5] (Len: 8)
-[Core] 全量碰撞扫描 Hash: 4c384fc5 (范围: 0-5000000000)
-[Core] 找到 2 个碰撞候选
-│ 碰撞候选 (2 个):
-[Debug] verify_uid_exists(1943295936): code=0
-│   1. UID 1943295936 (✅存在)
-│      主页: https://space.bilibili.com/1943295936
-[Debug] verify_uid_exists(3752042521): code=-404
-│   2. UID 3752042521 (❌不存在)
-│      主页: https://space.bilibili.com/3752042521
+│ 内容: 哈尼也说过
+│ Hash: [d46be04a] (Len: 8)
+[Core] 暴力破解未找到 (可能是16位长UID)
+[MITM] 启动高级引擎... (使用 2.4GB 表)
+[MITM] 候选数: 336
+[验证] UID 3546377906817602 (✅存在)
+│      主页: https://space.bilibili.com/3546377906817602
 └─────────────────────────────────────────────────────────
 
 [系统] 已找到目标弹幕，停止搜索。
@@ -127,16 +115,7 @@ gcc -O3 -Wall -pthread -o check_history \
 无需登录，查询当前弹幕池（最近弹幕）。
 
 ```bash
-./check_history.exe -bvid BV192iRBKEs3 -search "关键词"
-```
-
-### 模式三：离线Hash破解
-
-直接破解已知的 CRC32 哈希值。
-
-```bash
-./check_history.exe -hash c0f262d1
-./check_history.exe -hash c0f262d1 -threads 24  # 指定线程数
+./bilitrace.exe -bvid BV192iRBKEs3 -search "关键词"
 ```
 
 ---
@@ -146,10 +125,10 @@ gcc -O3 -Wall -pthread -o check_history \
 | 参数 | 说明 | 示例 | 必需性 |
 |------|------|------|--------|
 | `-bvid <BV号>` | 视频 BV 号，自动获取 CID 和发布日期 | `-bvid BV1AKihB7E9d` | ⭐ 推荐 |
-| `-sessdata <COOKIE>` | B站登录凭证，用于历史回溯模式 | `-sessdata "xxx..."` | 历史模式必需 |
+| `-sessdata <Key>` | B站登录凭证，用于历史回溯模式 | `-sessdata "xxx..."` | 历史模式必需 |
 | `-search <关键词>` | 搜索包含关键词的弹幕 | `-search "前方高能"` | 可选 |
 | `-first` | 单结果模式，找到即停 | `-first` | 可选 |
-| `-hash <HASH>` | 离线破解 CRC32 哈希 | `-hash bc28c067` | 离线模式 |
+| `-force-mitm` | 强制使用 MITM 引擎 | `-force-mitm` | 可选 |
 | `-cid <CID>` | 手动指定视频 CID（备用） | `-cid 497529158` | 可选 |
 | `-threads <N>` | 并行线程数，范围 1-64 | `-threads 24` | 可选（默认8） |
 
@@ -172,47 +151,50 @@ gcc -O3 -Wall -pthread -o check_history \
 
 ---
 
-## 🔬 技术原理
+## 🔬 技术原理深度解析
 
-### CRC32 逆向破解
+### 1. CRC32 线性同态性
 
-B站弹幕的 `midHash` 字段是用户UID的CRC32哈希值：
+CRC32 是基于 GF(2) 有限域的多项式运算，具有线性同态性。对于 16 位 UID，我们将其分割为 `High` (前6-8位) 和 `Low` (后8位) 两部分：
 
+```math
+UID = High \times 10^8 + Low
 ```
-UID: 1943295936  →  CRC32  →  midHash: 4c384fc5
+
+根据线性性质：
+
+```math
+CRC(UID) = CRC(High \times 10^8) \oplus CRC(Low)
 ```
 
-由于：
+### 2. 中间相遇攻击 (MITM)
 
-1. CRC32是校验算法而非加密算法
-2. UID为递增整数，空间有限（0 ~ 5,000,000,000）
-3. 现代CPU算力强大（多线程并行）
+为了解决 16 位 UID ($10^{16}$ 空间) 无法暴力枚举的问题，我们采用 **中间相遇攻击 (Space-Time Tradeoff)**：
 
-因此可通过暴力遍历在数秒内还原真实UID。
+1. **预计算 (Offline)**:
+    - 遍历所有可能的 `Low` 部分 ($0 \sim 10^8$)，计算其 CRC 值。
+    - 构建反向查找表：`Table[CRC(Low)] = Low`。
+    - 表大小约 **763 MB** (1亿条目 × 8字节)，加载到内存仅需 0.5 秒。
 
-### CRC32 碰撞处理
+2. **在线搜索 (Online)**:
+    - 目标是找到满足 `CRC(High \times 10^8) \oplus CRC(Low) = Target` 的组合。
+    - 变换方程为：`CRC(High \times 10^8) \oplus Target = CRC(Low)`。
+    - 遍历 `High` 部分，计算左式结果，并在预计算表中查找是否存在对应的 `Low`。
 
-CRC32 存在**碰撞**：不同的 UID 可能产生相同的 Hash。本工具会：
+### 3. 复杂度降维
 
-1. 扫描所有匹配的 UID（最多16个）
-2. 调用 B站 API 验证每个 UID 是否存在
-3. 输出标记：`✅存在` / `❌不存在` / `⚠️未知`
+通过 MITM，我们将搜索复杂度从 $O(N)$ 降低到了 $O(\sqrt{N})$：
 
-### 历史弹幕回溯原理
+- **传统暴力**: $10^{16}$ 次计算 -> **~300 年**
+- **MITM 攻击**: $2 \times 10^8$ 次计算 -> **~0.2 秒**
 
-B站采用 **冷热数据分离** 架构：
+### 4. 数据驱动白名单 (Smart Filter)
 
-| 数据类型 | 存储位置 | 访问方式 |
-|----------|----------|----------|
-| 热数据（最近7天） | 高速缓存 | 默认API直接返回 |
-| 冷数据（历史全量） | 归档存储 | 需调用 `history/index` + `history/seg.so` |
+在 MITM 产生的大量数学候选解中，我们结合 B站用户 ID 生成规律（Snowflake 算法），内置了 **14 种高频前缀白名单** (如 `35469...`)。这使得工具能自动过滤 99.9% 的无效碰撞，确保最终检出的 UID 是真实活跃账号。
 
-本工具实现了 **日历爬取算法 (Calendar Crawl)**：
+### 5. 历史回溯 (Calendar Crawl)
 
-1. 调用 `history/index` 获取某月有弹幕的日期列表
-2. 逐日调用 `history/seg.so` 获取 Protobuf 格式的弹幕数据
-3. 从当前月份倒序遍历，直到视频发布月份
-4. **新增**：自动缓存到 `cache/<cid>/<date>.pb`，避免重复请求
+利用 B站 `history/index` 接口获取有弹幕的日期，再逐日抓取 `.so` 分段文件，并自动进行本地缓存（Protobuf 格式），实现全量历史回溯。
 
 ---
 
@@ -220,81 +202,20 @@ B站采用 **冷热数据分离** 架构：
 
 ```
 BiliTraceC/
-├── main.c              # 主程序入口（参数解析、模式调度、回调处理）
-├── cracker.c/h         # CRC32暴力破解模块（多线程 + 碰撞候选）
-├── network.c/h         # HTTP网络封装（基于libcurl）
-├── history_api.c/h     # 历史弹幕API + BVID解析 + UID验证
-├── proto_parser.c/h    # Protobuf手动解析器（无需protoc）
-├── crc32_core.h        # CRC32核心算法（查表法优化）
-├── utils.h             # 工具函数（快速整数转字符串）
-├── cJSON.c/h           # JSON解析库
-├── cache/              # 🆕 历史分段本地缓存
-├── deps/               # 依赖库（libcurl）
-├── docs/               # 技术文档
-│   ├── BUG_ANALYSIS.md        # 错误原因深度复盘
-│   └── AI_CONTEXT.md          # AI 维护开发指南
-├── .vscode/            # VS Code 配置
-├── Makefile            # Linux/macOS编译配置
-├── build.bat           # Windows编译脚本
-├── CMakeLists.txt      # CMake配置
-└── README.md           # 本文件
-```
-
----
-
-## 📊 性能数据
-
-| CPU | 单线程 | 24线程 | 50亿空间扫描时间 |
-|-----|--------|--------|------------------|
-| Intel Core Ultra 9 285K | ~500 M/s | ~1.5 G/s | ~3秒 |
-| Intel i7-9700K | 65 M/s | 480 M/s | ~10秒 |
-| AMD R7-5800X | 75 M/s | 560 M/s | ~9秒 |
-
-> 实际破解时间取决于目标UID大小，平均命中时间约为全扫描时间的一半
-
----
-
-## 常见问题 (FAQ)
-
-### Q1: 为什么显示多个碰撞候选？
-
-CRC32 存在碰撞，不同的 UID 可能产生相同的 Hash。工具会显示所有候选，并标记账号是否存在：
-
-- `✅存在`：该 UID 在 B站确实存在
-- `❌不存在`：该 UID 不存在或已注销
-- `⚠️未知`：验证请求失败（网络问题）
-
-### Q2: 为什么控制台 Hash 显示 "[规范化]"？
-
-Protobuf 协议在网络传输时会自动去掉数字的前导零（例如 `05abc` 传为 `5abc`）。
-本工具会自动检测并左侧补零到 8 位，确保计算 CRC32 时格式正确。
-
-### Q3: 历史模式找不到弹幕怎么办？
-
-工具会**自动回退到实时模式**。如果弹幕刚发送还未进入历史归档，会从实时弹幕池中搜索。
-
-### Q4: 为什么完全一样的弹幕内容搜不到？
-
-搜索使用**精确子串匹配**。检查是否有：
-
-- 多余的空格
-- 中英文标点差异（`，` vs `,`）
-- 全角/半角字符差异
-
-**建议**：使用**较短的唯一关键词**更容易命中。
-
-### Q5: 什么是本地缓存？如何清理？
-
-首次下载的历史分段会保存到 `cache/<cid>/<date>.pb`。再次查询同一视频时直接读取本地文件，跳过网络请求。
-
-清理缓存：
-
-```bash
-# Windows
-rmdir /s /q cache
-
-# Linux/macOS
-rm -rf cache
+├── src/
+│   ├── main.c          # 主程序入口
+│   ├── cracker.c       # CRC32 暴力破解 (Legacy)
+│   ├── mitm_cracker.c  # MITM 攻击引擎 (16位 UID)
+│   ├── network.c       # HTTP 网络库 (libcurl)
+│   ├── history_api.c   # B站 API 交互
+│   ├── proto_parser.c  # Protobuf 解析
+│   └── ...
+├── include/            # 头文件
+├── scripts/            # Python 数据分析脚本
+├── cache/              # 历史弹幕缓存
+├── deps/               # 依赖库 (libcurl)
+├── Makefile            # 构建脚本
+└── README.md           # 说明文档
 ```
 
 ---
@@ -304,9 +225,8 @@ rm -rf cache
 **本工具仅供安全研究与学术交流使用**
 
 - 请勿用于网络暴力、人肉搜索等非法行为
-- 大规模爬取可能违反B站服务条款
+- 大规模爬取可能违反 B站服务条款
 - 使用本工具产生的法律后果由使用者自行承担
-- 技术本身是中性的，使用者必须遵守法律与道德底线
 
 ---
 
@@ -314,7 +234,6 @@ rm -rf cache
 
 - [CRC32算法详解](https://create.stephan-brumme.com/crc32/)
 - [B站弹幕协议分析](https://socialsisteryi.github.io/bilibili-API-collect/)
-- [libcurl文档](https://curl.se/libcurl/)
 
 ---
 

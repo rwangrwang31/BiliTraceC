@@ -375,11 +375,39 @@ int verify_uid_exists(uint64_t uid) {
     int code = code_obj->valueint;
     printf("[Debug] verify_uid_exists(%I64u): code=%d\n", uid, code);
     if (code == 0) {
-      result = 1; // 存在
+      // 进一步校验 data 数据，防止误判
+      // 有些注销账号可能返回 code=0 但 data 为空或默认值
+      cJSON *data = cJSON_GetObjectItem(json, "data");
+      if (data) {
+        cJSON *card = cJSON_GetObjectItem(data, "card");
+        if (card) {
+          cJSON *mid_obj = cJSON_GetObjectItem(card, "mid");
+          // mid 可能是字符串或数字
+          uint64_t ret_mid = 0;
+          if (cJSON_IsString(mid_obj)) {
+            ret_mid = strtoull(mid_obj->valuestring, NULL, 10);
+          } else if (cJSON_IsNumber(mid_obj)) {
+            ret_mid = (uint64_t)mid_obj->valuedouble;
+          }
+
+          if (ret_mid == uid) {
+            result = 1; // 只有 MID 匹配才算真正存在
+          } else {
+            printf(
+                "[Debug] verify_uid_exists(%I64u): MID mismatch (got %I64u)\n",
+                uid, ret_mid);
+            result = 0;
+          }
+        } else {
+          result = 0; // 无 card 数据
+        }
+      } else {
+        result = 0; // 无 data
+      }
     } else if (code == -404 || code == -400) {
       result = 0; // 不存在
     } else {
-      result = -1; // 其他错误 (如 -352 风控)
+      result = -1; // 其他错误 (如 -352 风控, -401 鉴权)
     }
   }
 

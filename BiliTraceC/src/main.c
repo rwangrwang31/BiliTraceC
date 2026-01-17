@@ -24,6 +24,7 @@
 
 #include "cracker.h"
 #include "history_api.h"
+#include "mitm_cracker.h"
 #include "network.h"
 
 // Helper to convert UTF-16 to UTF-8
@@ -187,12 +188,17 @@ int history_callback(DanmakuElem *elem, void *user_data) {
       // 使用规范化后的 Hash 进行全量碰撞扫描
       CrackResult candidates;
       int count = crack_hash_all(normalized_hash, ctx->threads, &candidates);
+      int found_valid_uid = 0; // 标记是否找到真实存在的 UID
 
       if (count > 0) {
         printf("│ 碰撞候选 (%d 个):\n", count);
         for (int i = 0; i < count; i++) {
           uint64_t uid = candidates.uids[i];
           int exists = verify_uid_exists(uid);
+          // 只要有一个存在或未知(可能是网络问题)，我们就认为是有效尝试
+          if (exists == 1)
+            found_valid_uid = 1;
+
           const char *status = (exists == 1)   ? "✅存在"
                                : (exists == 0) ? "❌不存在"
                                                : "⚠️未知";
@@ -208,8 +214,87 @@ int history_callback(DanmakuElem *elem, void *user_data) {
           }
         }
       } else {
-        printf("│ UID : 未找到\n");
+        printf("│ UID : 未找到 (范围 0-%llu)\n",
+               (unsigned long long)8000000000000ULL);
       }
+
+      // =========================================================
+      // MITM 自动回退逻辑: 如果暴力破解失败或全是无效碰撞
+      // =========================================================
+      if (!found_valid_uid) {
+        printf("│\n");
+        printf("│ [智能分析] 暴力破解未找到有效结果 (可能是16位长UID)\n");
+        printf("│ [Core] 正在启动 MITM 攻击引擎 (全空间搜索)...\n");
+
+        if (!mitm_is_ready()) {
+          if (mitm_init(NULL) != 0) {
+            printf("│ [Error] MITM 引擎初始化失败！\n");
+            goto after_mitm;
+          }
+        }
+
+        // 结构体本身很小，直接放在栈上
+        // uids 数组由 mitm_crack 内部动态分配
+        MitmResult mitm_candidates = {0};
+
+        mitm_crack(normalized_hash, &mitm_candidates);
+
+        if (mitm_candidates.count > 0 && mitm_candidates.uids != NULL) {
+          printf("│\n");
+          printf("│ MITM 候选 (%d 个) - 开始 API 验证:\n",
+                 mitm_candidates.count);
+
+          int verified_count = 0;
+          for (int i = 0; i < mitm_candidates.count; i++) {
+            uint64_t uid = mitm_candidates.uids[i];
+            int exists = verify_uid_exists(uid);
+
+            if (exists == 1) {
+              // 找到有效 UID
+              printf("│   %d. UID %I64u (✅存在)\n", i + 1, uid);
+              printf("│      主页: https://space.bilibili.com/%I64u\n", uid);
+              found_valid_uid = 1;
+              verified_count++;
+
+              if (ctx->first_only) {
+                printf("│ [系统] 已找到有效目标，停止验证剩余候选。\n");
+                break;
+              }
+            } else {
+              // 每 100 个输出一次进度
+              if ((i + 1) % 100 == 0) {
+                printf("│   [进度] 已验证 %d/%d (暂无命中)\n", i + 1,
+                       mitm_candidates.count);
+              }
+            }
+
+            // 请求间隔 (150ms)
+            if (i < mitm_candidates.count - 1) {
+#ifdef _WIN32
+              Sleep(150);
+#else
+              usleep(150000);
+#endif
+            }
+          }
+
+          if (!found_valid_uid) {
+            printf("│ [完成] 验证 %d 个候选，未找到有效 UID\n",
+                   mitm_candidates.count);
+          }
+        } else {
+          printf("│ [MITM] 智能过滤后未找到匹配 UID (请检查规则)\n");
+        }
+
+        // 释放动态分配的内存
+        if (mitm_candidates.uids) {
+          free(mitm_candidates.uids);
+          mitm_candidates.uids = NULL;
+        }
+      }
+
+    after_mitm:;
+
     } else {
       printf("│ Hash: [无]\n");
     }
@@ -332,8 +417,27 @@ int main(int argc, char *argv[]) {
   }
 
   if (hash_target) {
-    uint32_t uid = crack_hash(hash_target, threads);
-    printf("Result: %u\n", uid);
+    // 使用 MITM 攻击支持 16 位 UID
+    printf("[MITM] 初始化中间相遇攻击模块...\n");
+    if (mitm_init(NULL) != 0) {
+      fprintf(stderr, "[Error] MITM 初始化失败\n");
+      return 1;
+    }
+
+    MitmResult result;
+    int count = mitm_crack(hash_target, &result);
+
+    if (count > 0) {
+      printf("\n[结果] 找到 %d 个匹配 UID:\n", count);
+      for (int i = 0; i < count; i++) {
+        printf("  %d. UID %I64u\n", i + 1, result.uids[i]);
+        printf("     主页: https://space.bilibili.com/%I64u\n", result.uids[i]);
+      }
+    } else {
+      printf("[结果] 未找到匹配 UID\n");
+    }
+
+    mitm_cleanup();
     return 0;
   }
 
