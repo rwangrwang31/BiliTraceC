@@ -1,65 +1,31 @@
-# ============================================================
-# BiliTraceC CMakeLists.txt
-# 跨平台CMake编译配置
-# ============================================================
-
 cmake_minimum_required(VERSION 3.10)
-project(BiliTraceC VERSION 2.0 LANGUAGES C)
+project(BiliTraceC LANGUAGES C)
 
-# C标准
+# Set C standard
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
-# 编译选项
+# Optimization flags
 if(MSVC)
-    # Visual Studio编译器
     add_compile_options(/O2 /W4)
-    add_definitions(-D_CRT_SECURE_NO_WARNINGS)
 else()
-    # GCC/Clang
-    add_compile_options(-O3 -Wall -Wextra)
+    add_compile_options(-O3 -Wall -Wextra -pthread)
 endif()
 
-# 查找依赖
-find_package(CURL REQUIRED)
-find_package(Threads REQUIRED)
+# Include directories
+include_directories(include)
+include_directories(deps/curl-8.11.1_1-win64-mingw/include)
 
-# 源文件
-set(SOURCES
-    main.c
-    cracker.c
-    network.c
-)
+# Source files
+file(GLOB SOURCES "src/*.c")
 
-set(HEADERS
-    crc32_core.h
-    utils.h
-    cracker.h
-    network.h
-)
+# Executable
+add_executable(bilitrace ${SOURCES})
 
-# 可执行文件
-add_executable(bilitrace ${SOURCES} ${HEADERS})
-
-# 链接库
-target_link_libraries(bilitrace 
-    PRIVATE 
-    CURL::libcurl
-    Threads::Threads
-)
-
-# Windows特殊处理
+# Libraries
+link_directories(deps/curl-8.11.1_1-win64-mingw/lib)
 if(WIN32)
-    target_link_libraries(bilitrace PRIVATE ws2_32)
+    target_link_libraries(bilitrace curl ws2_32)
+else()
+    target_link_libraries(bilitrace curl)
 endif()
-
-# 安装规则
-install(TARGETS bilitrace RUNTIME DESTINATION bin)
-
-# 打印配置信息
-message(STATUS "==================================")
-message(STATUS "BiliTraceC v${PROJECT_VERSION}")
-message(STATUS "Build Type: ${CMAKE_BUILD_TYPE}")
-message(STATUS "Compiler: ${CMAKE_C_COMPILER_ID}")
-message(STATUS "CURL: ${CURL_VERSION_STRING}")
-message(STATUS "==================================")
