@@ -29,7 +29,7 @@
 
 为了确保工具能够覆盖 B 站最新的 UID 规则（特别是动态变化的 16 位 UID 号段），建议用户遵循以下 **“数据分析-编译-执行”** 的标准流程，以实现最佳的溯源效果。
 
-详细指南请参阅：[docs/USER_GUIDE.md](docs/USER_GUIDE.md)
+详细指南请参阅：[docs/USER_GUIDE.md](BiliTraceC/docs/USER_GUIDE.md)
 
 ### 第一阶段：数据分析 (Data Analysis)
 
@@ -244,3 +244,4 @@ BiliTraceC/
 ---
 
 **Made with ❤️ for the Bilibili research community**
+
